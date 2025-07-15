@@ -8,16 +8,21 @@ import ast
 
 app = FastAPI()
 
-# Use Redis connection from full URL
+# Connect to Redis (env var or default localhost)
 REDIS_URL = os.getenv("REDISHOST", "redis://localhost:6379")
 r = Redis.from_url(REDIS_URL, decode_responses=True)
 
+# Models
 class CommandRequest(BaseModel):
     agent_id: str
     command: str
 
 class RegisterRequest(BaseModel):
     agent_id: str
+
+class ResultRequest(BaseModel):
+    task_id: str
+    output: str
 
 @app.get("/")
 def root():
@@ -53,9 +58,33 @@ def send_command(req: CommandRequest):
         "command": req.command
     }
 
+    # Push to the agent's queue
     r.rpush(f"queue:{req.agent_id}", str(payload))
     return {"status": "success", "task_id": task_id}
 
+@app.get("/api/agent/task/{agent_id}")
+def get_task(agent_id: str):
+    if not r.sismember("agents", agent_id):
+        raise HTTPException(status_code=404, detail="Agent not registered")
+
+    queue_key = f"queue:{agent_id}"
+    task_data = r.lpop(queue_key)
+
+    if task_data:
+        try:
+            task_dict = ast.literal_eval(task_data)
+            return task_dict
+        except Exception:
+            raise HTTPException(status_code=500, detail="Failed to parse task payload")
+    else:
+        raise HTTPException(status_code=404, detail="No task")
+
+@app.post("/api/agent/result")
+def post_result(result: ResultRequest):
+    key = f"result:{result.task_id}"
+    r.set(key, result.output, ex=60)  # result expires after 60 seconds
+    return {"status": "received"}
+    
 @app.get("/api/command/result/{task_id}")
 def get_result(task_id: str):
     key = f"result:{task_id}"
