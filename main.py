@@ -16,9 +16,23 @@ class CommandRequest(BaseModel):
     agent_id: str
     command: str
 
+class RegisterRequest(BaseModel):
+    agent_id: str
+
 @app.get("/")
 def root():
     return {"message": "AI Remote Backend is running"}
+
+@app.post("/api/agent/register")
+def register_agent(data: RegisterRequest):
+    agent_id = data.agent_id
+    if not agent_id:
+        raise HTTPException(status_code=400, detail="Missing agent_id")
+    try:
+        r.sadd("agents", agent_id)
+        return {"status": "registered", "agent_id": agent_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Redis error: {str(e)}")
 
 @app.get("/api/agents/active")
 def get_active_agents():
@@ -56,5 +70,3 @@ def get_result(task_id: str):
         time.sleep(1)
 
     raise HTTPException(status_code=408, detail="Timeout waiting for result")
-
-
