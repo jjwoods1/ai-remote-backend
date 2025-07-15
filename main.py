@@ -4,16 +4,13 @@ from redis import Redis
 import os
 import uuid
 import time
+import ast
 
 app = FastAPI()
 
-# Connect to Redis using Railway-provided environment variables
-r = Redis(
-    host=os.getenv("REDISHOST", "localhost"),
-    port=int(os.getenv("REDISPORT", 6379)),
-    password=os.getenv("REDIS_PASSWORD"),
-    decode_responses=True
-)
+# Use Redis connection from full URL
+REDIS_URL = os.getenv("REDISHOST", "redis://localhost:6379")
+r = Redis.from_url(REDIS_URL, decode_responses=True)
 
 class CommandRequest(BaseModel):
     agent_id: str
@@ -25,14 +22,17 @@ def root():
 
 @app.get("/api/agents/active")
 def get_active_agents():
-    agents = r.smembers("agents")
-    return {"agents": list(agents)}
+    try:
+        agents = r.smembers("agents")
+        return {"agents": list(agents)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Redis error: {str(e)}")
 
 @app.post("/api/command/send")
 def send_command(req: CommandRequest):
     if not r.sismember("agents", req.agent_id):
         raise HTTPException(status_code=404, detail="Agent not found")
-    
+
     task_id = str(uuid.uuid4())
     payload = {
         "task_id": task_id,
