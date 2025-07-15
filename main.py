@@ -6,7 +6,12 @@ import uuid
 app = FastAPI()
 
 # Redis connection (for local dev)
-r = Redis(host="localhost", port=6379, decode_responses=True)
+r = Redis(
+    host=os.getenv("REDISHOST", "localhost"),
+    port=int(os.getenv("REDISPORT", 6379)),
+    password=os.getenv("REDIS_PASSWORD"),
+    decode_responses=True
+)
 
 # Root health check
 @app.get("/")
